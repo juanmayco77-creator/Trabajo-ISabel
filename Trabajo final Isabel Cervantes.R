@@ -78,3 +78,113 @@ data$Costo_media <- replace_outliers(data$Costo, method = "mean")
 
 data
 sumary(data)
+
+#================ PARTE II ANALIZANDO OUTLIERS ================
+
+#Instalar paquetes
+install.packages(c("ggplot2","dplyr","officer","flextable","nortest"))
+
+# =========================
+# 1. CARGAR LIBRERÍAS
+# =========================
+library(readxl)
+library(dplyr)
+library(officer)
+library(flextable)
+
+# =========================
+# 2. IMPORTAR DATOS
+# =========================
+datos <- read_excel("ArchivoCambiado.xlsx")
+
+# =========================
+# 3. CONVERTIR DISTRITO A FACTOR
+# =========================
+datos$Distrito <- factor(datos$Distrito,
+                         levels = c("El Tambo", "Pilcomayo", "Huancayo"))
+
+# =========================
+# 4. TABLAS DE FRECUENCIA
+# =========================
+
+tabla_distrito <- as.data.frame(table(datos$Distrito))
+tabla_edad <- as.data.frame(table(datos$Edad))
+
+# Guardar tablas
+write.csv(tabla_distrito, "Tabla_Frecuencia_Distrito.csv", row.names = FALSE)
+write.csv(tabla_edad, "Tabla_Frecuencia_Edad.csv", row.names = FALSE)
+
+# =========================
+# 5. PRUEBA SHAPIRO-WILK (Costo)
+# =========================
+shapiro_test <- shapiro.test(datos$Costo)
+
+interpretacion_shapiro <- ifelse(shapiro_test$p.value < 0.05,
+                                 "Se rechaza H0: El Costo NO sigue distribución normal.",
+                                 "No se rechaza H0: El Costo sigue distribución normal.")
+
+# =========================
+# 6. PRUEBA DE BARTLETT
+# =========================
+bartlett_test <- bartlett.test(Costo ~ Distrito, data = datos)
+
+interpretacion_bartlett <- ifelse(bartlett_test$p.value < 0.05,
+                                  "Se rechaza H0: No hay homogeneidad de varianzas.",
+                                  "No se rechaza H0: Las varianzas son homogéneas.")
+
+# =========================
+# 7. PRUEBA KRUSKAL-WALLIS
+# =========================
+kruskal_test <- kruskal.test(Costo ~ Distrito, data = datos)
+
+interpretacion_kruskal <- ifelse(kruskal_test$p.value < 0.05,
+                                 "Se rechaza H0: Existen diferencias significativas entre distritos.",
+                                 "No se rechaza H0: No existen diferencias significativas entre distritos.")
+
+# =========================
+# 8. ANOVA
+# =========================
+anova_model <- aov(Costo ~ Distrito, data = datos)
+anova_result <- summary(anova_model)
+
+p_anova <- anova_result[[1]]$`Pr(>F)`[1]
+
+interpretacion_anova <- ifelse(p_anova < 0.05,
+                               "Se rechaza H0: Existen diferencias significativas entre medias.",
+                               "No se rechaza H0: No existen diferencias significativas entre medias.")
+
+# =========================
+# 9. EXPORTAR RESULTADOS A WORD
+# =========================
+
+doc <- read_docx()
+
+doc <- doc %>%
+  body_add_par("ANÁLISIS ESTADÍSTICO", style = "heading 1") %>%
+  
+  body_add_par("Tabla de Frecuencia - Distrito", style = "heading 2") %>%
+  body_add_flextable(flextable(tabla_distrito)) %>%
+  
+  body_add_par("Tabla de Frecuencia - Edad", style = "heading 2") %>%
+  body_add_flextable(flextable(tabla_edad)) %>%
+  
+  body_add_par("Prueba Shapiro-Wilk", style = "heading 2") %>%
+  body_add_par(paste("W =", round(shapiro_test$statistic,4),
+                     " | p-value =", round(shapiro_test$p.value,5))) %>%
+  body_add_par(interpretacion_shapiro) %>%
+  
+  body_add_par("Prueba Bartlett", style = "heading 2") %>%
+  body_add_par(paste("K-squared =", round(bartlett_test$statistic,4),
+                     " | p-value =", round(bartlett_test$p.value,5))) %>%
+  body_add_par(interpretacion_bartlett) %>%
+  
+  body_add_par("Prueba Kruskal-Wallis", style = "heading 2") %>%
+  body_add_par(paste("Chi-squared =", round(kruskal_test$statistic,4),
+                     " | p-value =", round(kruskal_test$p.value,5))) %>%
+  body_add_par(interpretacion_kruskal) %>%
+  
+  body_add_par("ANOVA", style = "heading 2") %>%
+  body_add_par(paste("p-value =", round(p_anova,5))) %>%
+  body_add_par(interpretacion_anova)
+
+print(doc, target = "Resultados_Analisis.docx")
